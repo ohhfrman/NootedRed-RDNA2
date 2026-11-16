@@ -32,7 +32,7 @@ IOREG = load_module("stage3a_610m_ioreg", "audit-mendocino-ioreg.py")
 NATIVE_PREFIX = "com.apple.kext.AMDRadeonX6000"
 
 
-def summarize(plist_reports: list[dict], ioreg_tree=None) -> dict:
+def summarize(plist_reports: list[dict], ioreg_tree=None, abi_audit=None) -> dict:
     native_personalities = []
     local_resource_personalities = []
     explicit_matches = []
@@ -93,6 +93,27 @@ def summarize(plist_reports: list[dict], ioreg_tree=None) -> dict:
         else:
             attachment = "NO_X6000_IOSERVICE_DESCENDANT_OBSERVED"
 
+    # An actual binary's exported symbols are useful evidence for selecting
+    # version-specific controller interface work. They cannot override an
+    # absent PCI personality or unobserved IOService attachment.
+    if abi_audit is None:
+        abi_state = "NOT_PROVIDED"
+        abi_classes = []
+    elif not isinstance(abi_audit, dict) or abi_audit.get("stage") != "R6_STAGE3E_X6000_BINARY_ABI_AUDIT":
+        raise ValueError("Not a Stage3E binary ABI audit")
+    else:
+        reports = abi_audit.get("reports")
+        if not isinstance(reports, list):
+            raise ValueError("Invalid Stage3E report array")
+        symbol_maps = [report.get("observed_class_symbols", {}) for report in reports
+                       if isinstance(report, dict)]
+        if not all(isinstance(m, dict) for m in symbol_maps):
+            raise ValueError("Invalid Stage3E symbol map")
+        abi_classes = sorted({cls for sym_map in symbol_maps
+                              for cls, names in sym_map.items()
+                              if isinstance(cls, str) and isinstance(names, list) and names})
+        abi_state = "SYMBOL_EVIDENCE_ONLY_NOT_COMPATIBILITY" if abi_classes else "NO_RELIABLE_CLASS_SYMBOL_EVIDENCE"
+
     return {
         "pci_target": "1002:1506",
         "native_personality_count": len(native_personalities),
@@ -109,6 +130,9 @@ def summarize(plist_reports: list[dict], ioreg_tree=None) -> dict:
         "metal_acceleration": "NOT_VERIFIED",
         "autoinject_1506_into_navi10": False,
         "native_binding_completed": False,
+        "stage3e_apple_binary_abi_state": abi_state,
+        "stage3e_observed_symbol_classes": abi_classes,
+        "stage3e_symbol_evidence_does_not_override_matching_or_attachment": True,
     }
 
 
@@ -128,8 +152,11 @@ def main():
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--ioreg", type=Path, help="Local ioreg -a plist; do not upload raw")
     group.add_argument("--live", action="store_true", help="Read IORegistry directly on macOS")
+    parser.add_argument("--abi-report", type=Path,
+                        help="Optional Stage3E output (Apple Mach-O symbol evidence only)")
     args = parser.parse_args()
     try:
+        abi_audit = json.loads(args.abi_report.read_text(encoding='utf-8')) if args.abi_report else None
         plist_reports = [PLIST.load_kext(path) for path in args.kext]
         if args.live:
             tree = collect_live_registry()
@@ -137,7 +164,7 @@ def main():
             tree = plistlib.loads(args.ioreg.read_bytes())
         else:
             tree = None
-        print(json.dumps(summarize(plist_reports, tree), indent=2))
+        print(json.dumps(summarize(plist_reports, tree, abi_audit), indent=2))
     except (OSError, ValueError, plistlib.InvalidFileException,
             subprocess.SubprocessError) as exc:
         parser.error(str(exc))

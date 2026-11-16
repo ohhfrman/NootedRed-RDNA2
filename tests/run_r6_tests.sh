@@ -29,3 +29,6 @@ python3 -m unittest discover -v -s tests -p "test_x6000_plist_audit.py"
 python3 -m unittest discover -v -s tests -p "test_r6_ioreg_audit.py"
 
 python3 -m unittest discover -v -s tests -p "test_r6_native_binding_report.py"
+
+# Stage 3E: host-only native Apple X6000 Mach-O ABI evidence, no binary modification.
+python3 -m unittest discover -v -s tests -p "test_stage3e_x6000_abi.py"
