@@ -7,6 +7,12 @@
 
 static const char *pathRadeonX6000Framebuffer =
     "/System/Library/Extensions/AMDRadeonX6000Framebuffer.kext/Contents/MacOS/AMDRadeonX6000Framebuffer";
+// Observation-only. Do not redirect Vega patches to these native RDNA2 binaries.
+static const char *pathRadeonX6000 =
+    "/System/Library/Extensions/AMDRadeonX6000.kext/Contents/MacOS/AMDRadeonX6000";
+static const char *pathRadeonX6000HWLibs =
+    "/System/Library/Extensions/AMDRadeonX6000HWServices.kext/Contents/PlugIns/"
+    "AMDRadeonX6000HWLibs.kext/Contents/MacOS/AMDRadeonX6000HWLibs";
 static const char *pathRadeonX5000HWLibs = "/System/Library/Extensions/AMDRadeonX5000HWServices.kext/Contents/PlugIns/"
                                            "AMDRadeonX5000HWLibs.kext/Contents/MacOS/AMDRadeonX5000HWLibs";
 static const char *pathRadeonX5000 = "/System/Library/Extensions/AMDRadeonX5000.kext/Contents/MacOS/AMDRadeonX5000";
@@ -76,5 +82,14 @@ KernelPatcher::KextInfo kextAppleGFXHDA {
     1,
     {true},
     {},
+    KernelPatcher::KextInfo::Unloaded,
+};
+
+// Kext arrival does not imply this GPU is driven or Metal is functional.
+KernelPatcher::KextInfo kextRadeonX6000 {
+    "com.apple.kext.AMDRadeonX6000", &pathRadeonX6000, 1, {true}, {}, KernelPatcher::KextInfo::Unloaded,
+};
+KernelPatcher::KextInfo kextRadeonX6000HWLibs {
+    "com.apple.kext.AMDRadeonX6000HWLibs", &pathRadeonX6000HWLibs, 1, {true}, {},
     KernelPatcher::KextInfo::Unloaded,
 };

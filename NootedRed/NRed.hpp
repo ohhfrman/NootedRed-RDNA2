@@ -4,6 +4,7 @@
 // See LICENSE for details.
 
 #pragma once
+#include <HardwareProfile.hpp>
 #include <GPUDriversAMD/ATOMBIOS.hpp>
 #include <GPUDriversAMD/CAIL/Result.hpp>
 #include <GPUDriversAMD/PowerPlay.hpp>
@@ -40,6 +41,7 @@ class NRed {
     volatile UInt32 *rmmioPtr {nullptr};    // TODO: Remove!
     OSData *vbiosData {nullptr};            // TODO: Remove!
     UInt32 deviceID {0};                    // TODO: Remove!
+    NRedHardware::Architecture architecture {NRedHardware::Architecture::Unknown};
     UInt32 pciRevision {0};                 // TODO: Remove!
     UInt64 fbOffset {0};                    // TODO: Remove!
     UInt16 devRevision {0};                 // TODO: Remove!
@@ -47,6 +49,8 @@ class NRed {
 
     public:
     static NRed &singleton();
+    bool isMendocino() const { return this->architecture == NRedHardware::Architecture::MendocinoRDNA2; }
+    bool isVega() const { return this->architecture == NRedHardware::Architecture::Vega; }
 
     const Attributes &getAttributes() const { return this->attributes; }    // TODO: Remove!
     UInt32 getDeviceID() const { return deviceID; }                         // TODO: Remove!

@@ -15,6 +15,7 @@
 #include <Hotfixes/X6000FB.hpp>
 #include <IOKit/acpi/IOACPIPlatformExpert.h>
 #include <Kexts.hpp>
+#include <MendocinoProbe.hpp>
 #include <Model.hpp>
 #include <NRed.hpp>
 #include <PenguinWizardry/RuntimeMC.hpp>
@@ -42,6 +43,8 @@ void NRed::init() {
     Backlight::singleton().init();
 
     lilu.onKextLoadForce(&kextRadeonX6000Framebuffer);
+    lilu.onKextLoadForce(&kextRadeonX6000);
+    lilu.onKextLoadForce(&kextRadeonX6000HWLibs);
     lilu.onKextLoadForce(&kextRadeonX5000HWLibs);
     lilu.onKextLoadForce(&kextRadeonX5000);
     lilu.onKextLoadForce(&kextAGDP);
@@ -50,6 +53,9 @@ void NRed::init() {
     lilu.onPatcherLoadForce(
         [](void *const, KernelPatcher &patcher) {
             singleton().processPatcher();
+            // GC 10.3.7 is not Vega/GFX9; never install the old injector/RuntimeMC hooks.
+            if (singleton().isMendocino()) { return; }
+            if (!singleton().isVega()) { return; } // Fail closed before classification.
             iVega::DriverInjector::singleton().processPatcher(patcher);
             PenguinWizardry::RuntimeMCManager::singleton().processPatcher(patcher);
         },
@@ -58,6 +64,19 @@ void NRed::init() {
     lilu.onKextLoadForce(
         nullptr, 0,
         [](void *const, KernelPatcher &patcher, const size_t id, const mach_vm_address_t slide, const size_t size) {
+            // A kext's presence is only observation; retain it even when it loads
+            // before PCI enumeration. These calls never route or patch code.
+            if (id == kextRadeonX6000.loadIndex) {
+                MendocinoProbe::noteX6000Component(MendocinoProbe::Component::Accelerator);
+            } else if (id == kextRadeonX6000HWLibs.loadIndex) {
+                MendocinoProbe::noteX6000Component(MendocinoProbe::Component::HWLibs);
+            } else if (id == kextRadeonX6000Framebuffer.loadIndex) {
+                MendocinoProbe::noteX6000Component(MendocinoProbe::Component::Framebuffer);
+            }
+            // The R4 observation path is adapted to the R5 iVega/Hotfixes layout.
+            // No X6000/Vega binary offsets or MMIO writes for Radeon 610M.
+            if (singleton().isMendocino()) { return; }
+            if (!singleton().isVega()) { return; } // No binary patch while identity unknown.
             Hotfixes::AGDP::singleton().processKext(patcher, id, slide, size);
             Hotfixes::X6000FB::singleton().processKext(patcher, id, slide, size);
             Backlight::singleton().processKext(patcher, id, slide, size);
@@ -71,6 +90,7 @@ void NRed::init() {
 }
 
 void NRed::hwLateInit() {
+    if (this->isMendocino()) { return; } // GC9 MMIO / VBIOS operations are not RDNA2 compatible.
     if (this->rmmio != nullptr) { return; }
 
     this->iGPU->setMemoryEnable(true);
@@ -152,6 +172,36 @@ void NRed::processPatcher() {
     auto *devInfo = DeviceInfo::create();
     assert(devInfo != nullptr);
 
+    // R5: identify Radeon 610M before any Vega iGPU switch-off, property mutation
+    // or MMIO mapping. Both builtin and external Lilu PCI lists are checked.
+    auto is610M = [](IOPCIDevice *gpu) -> bool {
+        if (gpu == nullptr) { return false; }
+        const auto vendor = static_cast<UInt16>(
+            WIOKit::readPCIConfigValue(gpu, WIOKit::kIOPCIConfigVendorID));
+        const auto device = static_cast<UInt16>(
+            WIOKit::readPCIConfigValue(gpu, WIOKit::kIOPCIConfigDeviceID));
+        return NRedHardware::classify(vendor, device) == NRedHardware::Architecture::MendocinoRDNA2;
+    };
+    auto *mendocino = OSDynamicCast(IOPCIDevice, devInfo->videoBuiltin);
+    if (!is610M(mendocino)) {
+        mendocino = nullptr;
+        for (size_t i = 0; i < devInfo->videoExternal.size(); ++i) {
+            auto *gpu = OSDynamicCast(IOPCIDevice, devInfo->videoExternal[i].video);
+            if (is610M(gpu)) { mendocino = gpu; break; }
+        }
+    }
+    if (mendocino != nullptr) {
+        this->iGPU = mendocino;
+        this->deviceID = 0x1506;
+        this->architecture = NRedHardware::Architecture::MendocinoRDNA2;
+        this->pciRevision = WIOKit::readPCIConfigValue(mendocino, WIOKit::kIOPCIConfigRevisionID);
+        MendocinoProbe::publish(mendocino, this->pciRevision);
+        SYSLOG("NRed", "R5 Mendocino 1002:1506: GC10.3.7/DCN3.1.6 diagnostics only; no acceleration");
+        DeviceInfo::deleter(devInfo);
+        return;
+    }
+
+    // Preserve all pre-existing Vega paths for other GPUs.
     devInfo->processSwitchOff();
 
     PANIC_COND(devInfo->videoBuiltin == nullptr, "NRed", "No iGPU detected by Lilu");
@@ -164,6 +214,7 @@ void NRed::processPatcher() {
     updatePropertiesForDevice(this->iGPU);
 
     this->deviceID = WIOKit::readPCIConfigValue(this->iGPU, WIOKit::kIOPCIConfigDeviceID);
+    this->architecture = NRedHardware::classify(0x1002, static_cast<UInt16>(this->deviceID));
     switch (this->deviceID) {
         case 0x15D8: {
             this->attributes.setPicasso();
@@ -203,6 +254,7 @@ void NRed::processPatcher() {
 void NRed::setProp32(const char *const key, const UInt32 value) const { this->iGPU->setProperty(key, value, 32); }
 
 UInt32 NRed::readReg32(const UInt32 reg) const {
+    if (this->isMendocino()) { return 0; } // R5 must never access Vega registers on GC10.
     if ((reg * sizeof(UInt32)) < this->rmmio->getLength()) {
         return this->rmmioPtr[reg];
     } else {
@@ -212,6 +264,7 @@ UInt32 NRed::readReg32(const UInt32 reg) const {
 }
 
 void NRed::writeReg32(const UInt32 reg, const UInt32 val) const {
+    if (this->isMendocino()) { return; } // No legacy SMU/MMIO programming on Radeon 610M.
     if ((reg * sizeof(UInt32)) < this->rmmio->getLength()) {
         this->rmmioPtr[reg] = val;
     } else {

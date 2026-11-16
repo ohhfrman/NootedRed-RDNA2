@@ -13,3 +13,7 @@ extern KernelPatcher::KextInfo kextAppleBacklight;
 extern KernelPatcher::KextInfo kextAppleMCCSControl;
 extern KernelPatcher::KextInfo kextAGDP;
 extern KernelPatcher::KextInfo kextAppleGFXHDA;
+
+// Observation-only native RDNA2 components.
+extern KernelPatcher::KextInfo kextRadeonX6000;
+extern KernelPatcher::KextInfo kextRadeonX6000HWLibs;
