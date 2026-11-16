@@ -9,6 +9,7 @@
 #include <MendocinoX6000Compatibility.hpp>
 #include <MendocinoDisplayPreflight.hpp>
 #include <MendocinoNativeAttachment.hpp>
+#include <MendocinoControllerSnapshot.hpp>
 #include <MendocinoProbe.hpp>
 #include <IOKit/pci/IOPCIDevice.h>
 #include <IOKit/IOLib.h>
@@ -272,6 +273,15 @@ void MendocinoProbe::publish(IOPCIDevice* const gpu, const unsigned int pciRevis
     set32(gpu, "NRed,MP1-IP", NRedHardware::mendocino.mp1.packed());
     // Note: published IP values describe the known SKU, not hardware-discovered IP blocks.
     setString(gpu, "NRed,IPVersionSource", "Linux AMD Mendocino product table (not live IP discovery)");
+    // After VFCT and IP discovery handoff, refresh the Stage3D input gate on
+    // the PCI node. The independent IOKit provider may have started earlier.
+    // This is *not* a callback into Apple X6000 or a controller init event.
+    const auto stage3d = MendocinoControllerSnapshot::collect(gpu);
+    setString(gpu, "NRed,Stage3D-InputStatus", MendocinoControllerInputs::name(stage3d));
+    set32(gpu, "NRed,Stage3D-InputsValidatedOnly",
+          stage3d == MendocinoControllerInputs::Status::InputsValidatedOnly);
+    set32(gpu, "NRed,Stage3D-NativeControllerInitialized", 0);
+    set32(gpu, "NRed,Stage3D-MetalVerified", 0);
 }
 
 void MendocinoProbe::noteX6000Component(const MendocinoProbe::Component component)

@@ -99,7 +99,7 @@ inline void decodeInto(const uint8_t *data, size_t length, Result &out) {
         const size_t descriptor=tableOffset+14+die*4;
         const uint16_t dieId=u16(data+descriptor);
         const size_t dieOffset=u16(data+descriptor+2);
-        if (!span(dieOffset,4,tableEnd) || dieOffset < tableOffset+80 ||
+        if (!span(dieOffset,4,tableEnd) || dieOffset < size_t(tableOffset) + 80U ||
             dieId!=die || u16(data+dieOffset)!=dieId) {
             out.status=Status::BadDie; return;
         }

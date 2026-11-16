@@ -2,6 +2,7 @@
 // NOT an Apple AMDRadeonX6000 controller or graphics initializer.
 // Never open the GPU, map MMIO, program PCI config, enable bus mastering,
 // patch native driver personalities, or claim eDP / GC / Metal readiness.
+#include <MendocinoControllerSnapshot.hpp>
 #include <MendocinoProviderMatch.hpp>
 #include <IOKit/IOService.h>
 #include <IOKit/pci/IOPCIDevice.h>
@@ -31,6 +32,21 @@ bool matches(IOService *provider) {
     return MendocinoProviderMatch::accepts(
         gpu->configRead32(0x00), gpu->configRead32(0x08), enabled);
 }
+void publishControllerSnapshot(NRedMendocinoProvider *service, IOPCIDevice *gpu) {
+    const auto status = MendocinoControllerSnapshot::collect(gpu);
+    auto *value = OSString::withCString(MendocinoControllerInputs::name(status));
+    if (value != nullptr) {
+        service->setProperty("NRed,Stage3D-InputStatus", value);
+        value->release();
+    }
+    service->setProperty("NRed,Stage3D-InputsValidatedOnly",
+        static_cast<unsigned long long>(status == MendocinoControllerInputs::Status::InputsValidatedOnly), 32);
+    service->setProperty("NRed,Stage3D-NativeControllerInitialized", 0ULL, 32);
+    service->setProperty("NRed,Stage3D-MetalVerified", 0ULL, 32);
+    // A point-in-time observation: firmware/EDID can arrive after IOKit start.
+    // Treat this as an initial snapshot, never proof of permanent readiness.
+    service->setProperty("NRed,Stage3D-SnapshotOnly", 1ULL, 32);
+}
 } // namespace
 
 IOService *NRedMendocinoProvider::probe(IOService *provider, SInt32 *score) {
@@ -54,6 +70,9 @@ bool NRedMendocinoProvider::start(IOService *provider) {
         IOService::stop(provider);
         return false;
     }
+    auto *pci = OSDynamicCast(IOPCIDevice, provider);
+    // matches(provider) above has already verified that this is an IOPCIDevice.
+    publishControllerSnapshot(this, pci);
     registerService();
     return true;
 }

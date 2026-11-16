@@ -17,6 +17,11 @@ trap 'rm -rf "$TMP"' EXIT
 "$CXX" -std=c++17 -Wall -Wextra -Werror -I NootedRed \
     tests/mendocino_provider_match_test.cpp -o "$TMP/mendocino_provider_match_test"
 "$TMP/mendocino_provider_match_test"
+"$CXX" -std=c++17 -Wall -Wextra -Werror -I NootedRed \
+    tests/mendocino_controller_inputs_test.cpp -o "$TMP/mendocino_controller_inputs_test"
+"$TMP/mendocino_controller_inputs_test"
+python3 -m unittest discover -v -s tests -p "test_stage3d_provider.py"
+python3 -m unittest discover -v -s tests -p "test_stage3d_bundle.py"
 python3 -m unittest discover -v -s tests -p "test_stage3c_provider.py"
 python3 tests/test_r6_integration.py
 python3 -m unittest discover -v -s tests -p "test_x6000_plist_audit.py"
