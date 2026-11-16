@@ -192,6 +192,29 @@ void iVega::X6000FB::processKext(KernelPatcher &patcher, size_t id, mach_vm_addr
     PANIC_COND(!cailAsicCapsSolveRequest.solve(patcher, id, slide, size), "X6000FB",
         "Failed to resolve CAIL_ASIC_CAPS_TABLE");
 
+    this->routeKextHooks(patcher, id, slide, size);
+
+    this->applyFramebufferPatches(patcher, slide, size);
+
+    PANIC_COND(MachInfo::setKernelWriting(true, KernelPatcher::kernelWriteLock) != KERN_SUCCESS, "X6000FB",
+        "Failed to enable kernel writing");
+    orgAsicCapsTable->familyId = AMD_FAMILY_RAVEN;
+    orgAsicCapsTable->ddiCaps = NRed::singleton().getAttributes().isRenoirE() ? ddiCapsRenoirE :
+                                NRed::singleton().getAttributes().isRenoir()  ? ddiCapsRenoir :
+                                                                                ddiCapsRaven;
+    orgAsicCapsTable->deviceId = NRed::singleton().getDeviceID();
+    orgAsicCapsTable->revision = NRed::singleton().getDevRevision();
+    orgAsicCapsTable->extRevision =
+        static_cast<UInt32>(NRed::singleton().getEnumRevision()) + NRed::singleton().getDevRevision();
+    orgAsicCapsTable->pciRevision = NRed::singleton().getPciRevision();
+    MachInfo::setKernelWriting(false, KernelPatcher::kernelWriteLock);
+    DBGLOG("X6000FB", "Applied DDI Caps patches");
+
+    this->patchLegacyDisplayPipeCounts(patcher, id, slide, size);
+}
+
+
+void iVega::X6000FB::routeKextHooks(KernelPatcher &patcher, size_t id, mach_vm_address_t slide, size_t size) {
     PenguinWizardry::PatternRouteRequest requests[] = {
         {"__ZNK15AmdAtomVramInfo16populateVramInfoER16AtomFirmwareInfo", populateVramInfo, kPopulateVramInfoPattern,
             kPopulateVramInfoPatternMask},
@@ -233,11 +256,19 @@ void iVega::X6000FB::processKext(KernelPatcher &patcher, size_t id, mach_vm_addr
             PANIC_COND(!request.route(patcher, id, slide, size), "X6000FB", "Failed to route IRQMGR_WriteRegister");
         }
     }
+}
 
+void iVega::X6000FB::applyFramebufferPatches(KernelPatcher &patcher, mach_vm_address_t slide, size_t size) {
     const PenguinWizardry::MaskedLookupPatch patch {&kextRadeonX6000Framebuffer, kPopulateDeviceInfoOriginal,
         kPopulateDeviceInfoMask, kPopulateDeviceInfoPatched, kPopulateDeviceInfoMask, 1};
     PANIC_COND(!patch.apply(patcher, slide, size), "X6000FB", "Failed to apply populateDeviceInfo patch");
 
+    this->applyFirmwareInfoPatches(patcher, slide, size);
+    this->applyVramNullCheckPatches(patcher, slide, size);
+    this->applyRenoirDmcubPatches(patcher, slide, size);
+}
+
+void iVega::X6000FB::applyFirmwareInfoPatches(KernelPatcher &patcher, mach_vm_address_t slide, size_t size) {
     if (currentKernelVersion() >= MACOS_14_4) {
         const PenguinWizardry::MaskedLookupPatch patches[] = {
             {&kextRadeonX6000Framebuffer, kGetFirmwareInfoNullCheckOriginal1404,
@@ -258,7 +289,9 @@ void iVega::X6000FB::processKext(KernelPatcher &patcher, size_t id, mach_vm_addr
         PANIC_COND(!PenguinWizardry::MaskedLookupPatch::applyAll(patcher, patches, slide, size), "X6000FB",
             "Failed to apply patches");
     }
+}
 
+void iVega::X6000FB::applyVramNullCheckPatches(KernelPatcher &patcher, mach_vm_address_t slide, size_t size) {
     if (currentKernelVersion() == MACOS_10_15) {
         const PenguinWizardry::MaskedLookupPatch patch {&kextRadeonX6000Framebuffer,
             kAmdAtomVramInfoNullCheckOriginal1015, kAmdAtomVramInfoNullCheckOriginalMask1015,
@@ -273,7 +306,9 @@ void iVega::X6000FB::processKext(KernelPatcher &patcher, size_t id, mach_vm_addr
         PANIC_COND(!PenguinWizardry::MaskedLookupPatch::applyAll(patcher, patches, slide, size), "X6000FB",
             "Failed to apply null check patches");
     }
+}
 
+void iVega::X6000FB::applyRenoirDmcubPatches(KernelPatcher &patcher, mach_vm_address_t slide, size_t size) {
     if (NRed::singleton().getAttributes().isRenoir()) {
         const PenguinWizardry::MaskedLookupPatch patch {&kextRadeonX6000Framebuffer, kInitializeDmcubServices1Original,
             kInitializeDmcubServices1Patched, 1};
@@ -303,21 +338,9 @@ void iVega::X6000FB::processKext(KernelPatcher &patcher, size_t id, mach_vm_addr
                 "Failed to apply initializeDmcubServices ASIC patch");
         }
     }
+}
 
-    PANIC_COND(MachInfo::setKernelWriting(true, KernelPatcher::kernelWriteLock) != KERN_SUCCESS, "X6000FB",
-        "Failed to enable kernel writing");
-    orgAsicCapsTable->familyId = AMD_FAMILY_RAVEN;
-    orgAsicCapsTable->ddiCaps = NRed::singleton().getAttributes().isRenoirE() ? ddiCapsRenoirE :
-                                NRed::singleton().getAttributes().isRenoir()  ? ddiCapsRenoir :
-                                                                                ddiCapsRaven;
-    orgAsicCapsTable->deviceId = NRed::singleton().getDeviceID();
-    orgAsicCapsTable->revision = NRed::singleton().getDevRevision();
-    orgAsicCapsTable->extRevision =
-        static_cast<UInt32>(NRed::singleton().getEnumRevision()) + NRed::singleton().getDevRevision();
-    orgAsicCapsTable->pciRevision = NRed::singleton().getPciRevision();
-    MachInfo::setKernelWriting(false, KernelPatcher::kernelWriteLock);
-    DBGLOG("X6000FB", "Applied DDI Caps patches");
-
+void iVega::X6000FB::patchLegacyDisplayPipeCounts(KernelPatcher &patcher, size_t id, mach_vm_address_t slide, size_t size) {
     // XX: DCN 2 and newer have 6 display pipes, while DCN 1 (which is what Raven has) has only 4.
     // We need to patch the kext to create only 4 cursors, links and underflow trackers.
     if (!NRed::singleton().getAttributes().isRenoir()) {

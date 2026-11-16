@@ -25,6 +25,12 @@ namespace iVega {
         void processKext(KernelPatcher &patcher, size_t id, mach_vm_address_t slide, size_t size);
 
         private:
+        void routeKextHooks(KernelPatcher &patcher, size_t id, mach_vm_address_t slide, size_t size);
+        void applyFramebufferPatches(KernelPatcher &patcher, mach_vm_address_t slide, size_t size);
+        void applyFirmwareInfoPatches(KernelPatcher &patcher, mach_vm_address_t slide, size_t size);
+        void applyVramNullCheckPatches(KernelPatcher &patcher, mach_vm_address_t slide, size_t size);
+        void applyRenoirDmcubPatches(KernelPatcher &patcher, mach_vm_address_t slide, size_t size);
+        void patchLegacyDisplayPipeCounts(KernelPatcher &patcher, size_t id, mach_vm_address_t slide, size_t size);
         static UInt16 getEnumeratedRevision();
         static IOReturn populateVramInfo(void *self, void *fwInfo);
         static UInt32 wrapGetNumberOfConnectors(void *self);

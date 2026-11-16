@@ -42,6 +42,11 @@ namespace iVega {
         void processKext(KernelPatcher &patcher, size_t id, mach_vm_address_t slide, size_t size);
 
         private:
+        void resolveAcceleratorSymbols(KernelPatcher &patcher, size_t id, mach_vm_address_t slide, size_t size,
+            UInt32 *&orgChannelTypes, mach_vm_address_t &orgStartHWEngines);
+        void routeAcceleratorHooks(KernelPatcher &patcher, size_t id, mach_vm_address_t slide, size_t size);
+        void applyAcceleratorPatches(KernelPatcher &patcher, mach_vm_address_t slide, size_t size,
+            UInt32 *orgChannelTypes, mach_vm_address_t orgStartHWEngines);
         static bool allocateHWEngines(void *self);
         static void wrapSetupAndInitializeHWCapabilities(void *self);
         static void wrapGFX9SetupAndInitializeHWCapabilities(void *self);

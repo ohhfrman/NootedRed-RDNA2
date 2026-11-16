@@ -4,6 +4,7 @@
 #include <MendocinoVbios.hpp>
 #include <MendocinoIPDiscovery.hpp>
 #include <MendocinoEDID.hpp>
+#include <MendocinoAtomDisplay.hpp>
 #include <MendocinoBringup.hpp>
 #include <MendocinoProbe.hpp>
 #include <IOKit/pci/IOPCIDevice.h>
@@ -106,6 +107,29 @@ void MendocinoProbe::publish(IOPCIDevice* const gpu, const unsigned int pciRevis
     if (atomOK) { state.observe(MendocinoBringup::AtomVbiosPresent); }
     setString(gpu, "NRed,VBIOS-Status", atomOK ? "PRESENT_ATOM_VALID" : "MISSING_OR_INVALID");
     set32(gpu, "NRed,VBIOS-Bytes", rom != nullptr ? static_cast<uint32_t>(rom->getLength()) : 0);
+
+    // R6: extract board-specific display object paths and DCE v4.4 caps.
+    // Observational IORegistry properties only: does NOT bind X6000Framebuffer,
+    // train eDP links, perform MMIO or assert acceleration readiness.
+    const auto atomDisplay = MendocinoAtomDisplay::inspect(
+        atomOK && rom != nullptr ? static_cast<const uint8_t*>(rom->getBytesNoCopy()) : nullptr,
+        atomOK && rom != nullptr ? rom->getLength() : 0);
+    setString(gpu, "NRed,ATOM-DisplayParseStatus", MendocinoAtomDisplay::statusName(atomDisplay.status));
+    if (atomDisplay.status == MendocinoAtomDisplay::Status::OK) {
+        set32(gpu, "NRed,ATOM-DisplayPathCount", atomDisplay.pathCount);
+        set32(gpu, "NRed,ATOM-SupportedDevices", atomDisplay.supportedDevices);
+        const auto* const lcd = atomDisplay.firstWithTag(0x0002);
+        if (lcd != nullptr) {
+            set32(gpu, "NRed,ATOM-LCDConnectorID", lcd->connector);
+            set32(gpu, "NRed,ATOM-LCDEncoderID", lcd->encoder);
+        }
+        if (atomDisplay.dce44) {
+            set32(gpu, "NRed,ATOM-DCE-MaxPipes", atomDisplay.maxPipes);
+            set32(gpu, "NRed,ATOM-DCE-MaxActivePipes", atomDisplay.maxActivePipes);
+            set32(gpu, "NRed,ATOM-DCE-MaxPhys", atomDisplay.maxPhys);
+            set32(gpu, "NRed,ATOM-DCE-MaxAuxPairs", atomDisplay.maxAuxPairs);
+        }
+    }
 
     // GC10.3.7 / DCN3.1.6 version AND register-base preflight. The binary must
     // be supplied as NRed,AMD-IPDiscovery by a loader; we cannot safely infer

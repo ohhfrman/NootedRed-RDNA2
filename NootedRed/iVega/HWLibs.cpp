@@ -524,6 +524,60 @@ iVega::X5000HWLibs::X5000HWLibs() {
     }
 }
 
+static void applyLegacyCapabilityTables(CAILAsicCapsEntry *orgCapsTable,
+    CAILAsicCapsInitEntry *orgCapsInitTable, AMDDeviceTypeEntry *orgDeviceTypeTable,
+    AMDDeviceCapabilities *orgDevCapTable) {
+    PANIC_COND(MachInfo::setKernelWriting(true, KernelPatcher::kernelWriteLock) != KERN_SUCCESS, "HWLibs",
+        "Failed to enable kernel writing");
+    if (orgDeviceTypeTable != nullptr) {
+        *orgDeviceTypeTable = {.deviceId = NRed::singleton().getDeviceID(), .deviceType = kAMDDeviceTypeNavi10};
+    }
+
+    auto targetDeviceId = NRed::singleton().getAttributes().isRenoir() ? 0x1636 : NRed::singleton().getDeviceID();
+    for (; orgCapsInitTable->deviceId != 0xFFFFFFFF; orgCapsInitTable++) {
+        if (orgCapsInitTable->familyId == AMD_FAMILY_RAVEN && orgCapsInitTable->deviceId == targetDeviceId) {
+            orgCapsInitTable->deviceId = NRed::singleton().getDeviceID();
+            orgCapsInitTable->revision = NRed::singleton().getDevRevision();
+            orgCapsInitTable->extRevision =
+                static_cast<UInt64>(NRed::singleton().getEnumRevision()) + NRed::singleton().getDevRevision();
+            orgCapsInitTable->pciRevision = NRed::singleton().getPciRevision();
+            orgCapsInitTable->ddiCaps = NRed::singleton().getAttributes().isRenoirE() ? ddiCapsRenoirE :
+                                        NRed::singleton().getAttributes().isRenoir()  ? ddiCapsRenoir :
+                                                                                        ddiCapsRaven;
+            *orgCapsTable = {
+                .familyId = AMD_FAMILY_RAVEN,
+                .deviceId = NRed::singleton().getDeviceID(),
+                .revision = NRed::singleton().getDevRevision(),
+                .extRevision =
+                    static_cast<UInt32>(NRed::singleton().getEnumRevision()) + NRed::singleton().getDevRevision(),
+                .pciRevision = NRed::singleton().getPciRevision(),
+                .ddiCaps = orgCapsInitTable->ddiCaps,
+            };
+            break;
+        }
+    }
+    PANIC_COND(orgCapsInitTable->deviceId == 0xFFFFFFFF, "HWLibs", "Failed to find init caps table entry");
+    for (; orgDevCapTable->familyId != 0; orgDevCapTable++) {
+        if (orgDevCapTable->familyId == AMD_FAMILY_RAVEN && orgDevCapTable->deviceId == targetDeviceId) {
+            orgDevCapTable->deviceId = NRed::singleton().getDeviceID();
+            orgDevCapTable->extRevision =
+                static_cast<UInt64>(NRed::singleton().getEnumRevision()) + NRed::singleton().getDevRevision();
+            orgDevCapTable->revision = DEVICE_CAP_ENTRY_REV_DONT_CARE;
+            orgDevCapTable->enumRevision = DEVICE_CAP_ENTRY_REV_DONT_CARE;
+
+            orgDevCapTable->asicGoldenSettings->goldenSettings =
+                NRed::singleton().getAttributes().isRaven2() ? goldenSettingsRaven2 :
+                NRed::singleton().getAttributes().isRenoir() ? goldenSettingsRenoir :
+                                                               goldenSettingsRaven;
+
+            break;
+        }
+    }
+    PANIC_COND(orgDevCapTable->familyId == 0, "HWLibs", "Failed to find device capability table entry");
+    MachInfo::setKernelWriting(false, KernelPatcher::kernelWriteLock);
+    DBGLOG("HWLibs", "Applied DDI Caps patches");
+}
+
 void iVega::X5000HWLibs::processKext(KernelPatcher &patcher, const size_t id, const mach_vm_address_t slide,
     const size_t size) {
     if (kextRadeonX5000HWLibs.loadIndex != id) { return; }
@@ -555,6 +609,17 @@ void iVega::X5000HWLibs::processKext(KernelPatcher &patcher, const size_t id, co
     PANIC_COND(!PenguinWizardry::PatternSolveRequest::solveAll(patcher, id, solveRequests, slide, size), "HWLibs",
         "Failed to resolve symbols");
 
+    this->routePspHooks(patcher, id, slide, size);
+
+    this->routeFirmwareHooks(patcher, id, slide, size);
+
+    applyLegacyCapabilityTables(orgCapsTable, orgCapsInitTable, orgDeviceTypeTable, orgDevCapTable);
+
+    this->applyLegacyFirmwarePatches(patcher, slide, size);
+}
+
+
+void iVega::X5000HWLibs::routePspHooks(KernelPatcher &patcher, size_t id, mach_vm_address_t slide, size_t size) {
     if (currentKernelVersion() == MACOS_10_15) {
         PenguinWizardry::PatternRouteRequest request {"__ZN16AmdTtlFwServices7getIpFwEjPKcP10_TtlFwInfo", wrapGetIpFw,
             this->orgGetIpFw};
@@ -605,7 +670,9 @@ void iVega::X5000HWLibs::processKext(KernelPatcher &patcher, const size_t id, co
             kPspCmdKmSubmitPattern, kPspCmdKmSubmitPatternMask};
         PANIC_COND(!request.route(patcher, id, slide, size), "HWLibs", "Failed to route psp_cmd_km_submit");
     }
+}
 
+void iVega::X5000HWLibs::routeFirmwareHooks(KernelPatcher &patcher, size_t id, mach_vm_address_t slide, size_t size) {
     PenguinWizardry::JumpPatternRouteRequest fwRequests[] = {
         {"_gc_set_fw_entry_info", wrapGcSetFwEntryInfo, this->orgGcSetFwEntryInfo, kGcSetFwEntryInfoCallPattern,
             kGcSetFwEntryInfoCallPatternMask, kGcSetFwEntryInfoCallPatternJumpInstOff},
@@ -662,57 +729,9 @@ void iVega::X5000HWLibs::processKext(KernelPatcher &patcher, const size_t id, co
         kSmuInitFunctionPointerListCallPatternMask, kSmuInitFunctionPointerListCallPatternJumpInstOff};
     PANIC_COND(!smuRequest.route(patcher, id, slide, size), "HWLibs",
         "Failed to route `smu_init_function_pointer_list`");
+}
 
-    PANIC_COND(MachInfo::setKernelWriting(true, KernelPatcher::kernelWriteLock) != KERN_SUCCESS, "HWLibs",
-        "Failed to enable kernel writing");
-    if (orgDeviceTypeTable != nullptr) {
-        *orgDeviceTypeTable = {.deviceId = NRed::singleton().getDeviceID(), .deviceType = kAMDDeviceTypeNavi10};
-    }
-
-    auto targetDeviceId = NRed::singleton().getAttributes().isRenoir() ? 0x1636 : NRed::singleton().getDeviceID();
-    for (; orgCapsInitTable->deviceId != 0xFFFFFFFF; orgCapsInitTable++) {
-        if (orgCapsInitTable->familyId == AMD_FAMILY_RAVEN && orgCapsInitTable->deviceId == targetDeviceId) {
-            orgCapsInitTable->deviceId = NRed::singleton().getDeviceID();
-            orgCapsInitTable->revision = NRed::singleton().getDevRevision();
-            orgCapsInitTable->extRevision =
-                static_cast<UInt64>(NRed::singleton().getEnumRevision()) + NRed::singleton().getDevRevision();
-            orgCapsInitTable->pciRevision = NRed::singleton().getPciRevision();
-            orgCapsInitTable->ddiCaps = NRed::singleton().getAttributes().isRenoirE() ? ddiCapsRenoirE :
-                                        NRed::singleton().getAttributes().isRenoir()  ? ddiCapsRenoir :
-                                                                                        ddiCapsRaven;
-            *orgCapsTable = {
-                .familyId = AMD_FAMILY_RAVEN,
-                .deviceId = NRed::singleton().getDeviceID(),
-                .revision = NRed::singleton().getDevRevision(),
-                .extRevision =
-                    static_cast<UInt32>(NRed::singleton().getEnumRevision()) + NRed::singleton().getDevRevision(),
-                .pciRevision = NRed::singleton().getPciRevision(),
-                .ddiCaps = orgCapsInitTable->ddiCaps,
-            };
-            break;
-        }
-    }
-    PANIC_COND(orgCapsInitTable->deviceId == 0xFFFFFFFF, "HWLibs", "Failed to find init caps table entry");
-    for (; orgDevCapTable->familyId != 0; orgDevCapTable++) {
-        if (orgDevCapTable->familyId == AMD_FAMILY_RAVEN && orgDevCapTable->deviceId == targetDeviceId) {
-            orgDevCapTable->deviceId = NRed::singleton().getDeviceID();
-            orgDevCapTable->extRevision =
-                static_cast<UInt64>(NRed::singleton().getEnumRevision()) + NRed::singleton().getDevRevision();
-            orgDevCapTable->revision = DEVICE_CAP_ENTRY_REV_DONT_CARE;
-            orgDevCapTable->enumRevision = DEVICE_CAP_ENTRY_REV_DONT_CARE;
-
-            orgDevCapTable->asicGoldenSettings->goldenSettings =
-                NRed::singleton().getAttributes().isRaven2() ? goldenSettingsRaven2 :
-                NRed::singleton().getAttributes().isRenoir() ? goldenSettingsRenoir :
-                                                               goldenSettingsRaven;
-
-            break;
-        }
-    }
-    PANIC_COND(orgDevCapTable->familyId == 0, "HWLibs", "Failed to find device capability table entry");
-    MachInfo::setKernelWriting(false, KernelPatcher::kernelWriteLock);
-    DBGLOG("HWLibs", "Applied DDI Caps patches");
-
+void iVega::X5000HWLibs::applyLegacyFirmwarePatches(KernelPatcher &patcher, mach_vm_address_t slide, size_t size) {
     // TODO: Replace this hack with a simple hook.
     if (currentKernelVersion() == MACOS_10_15) {
         if (NRed::singleton().getAttributes().isRenoir()) {

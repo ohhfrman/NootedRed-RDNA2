@@ -104,6 +104,15 @@ void iVega::X5000::processKext(KernelPatcher &patcher, const size_t id, const ma
     UInt32 *orgChannelTypes;
     mach_vm_address_t orgStartHWEngines;
 
+    this->resolveAcceleratorSymbols(patcher, id, slide, size, orgChannelTypes, orgStartHWEngines);
+
+    this->routeAcceleratorHooks(patcher, id, slide, size);
+
+    this->applyAcceleratorPatches(patcher, slide, size, orgChannelTypes, orgStartHWEngines);
+}
+
+
+void iVega::X5000::resolveAcceleratorSymbols(KernelPatcher &patcher, size_t id, mach_vm_address_t slide, size_t size, UInt32 *&orgChannelTypes, mach_vm_address_t &orgStartHWEngines) {
     PenguinWizardry::PatternSolveRequest solveRequests[] = {
         {currentKernelVersion() == MACOS_10_15 ?
                 "__ZZN37AMDRadeonX5000_AMDGraphicsAccelerator22getAdditionalQueueListEPPK18_"
@@ -121,7 +130,9 @@ void iVega::X5000::processKext(KernelPatcher &patcher, const size_t id, const ma
     AMDRadeonX5000_AMDGFX9DCNDisplay::registerMC(kextRadeonX5000.id, patcher, id, slide, size);
     AMDRadeonX5000_AMDGFX9DCN1Display::resolve(kextRadeonX5000.id);
     AMDRadeonX5000_AMDGFX9DCN2Display::resolve(kextRadeonX5000.id);
+}
 
+void iVega::X5000::routeAcceleratorHooks(KernelPatcher &patcher, size_t id, mach_vm_address_t slide, size_t size) {
     PenguinWizardry::PatternRouteRequest requests[] = {
         {"__ZN32AMDRadeonX5000_AMDVega10Hardware17allocateHWEnginesEv", allocateHWEngines},
         {"__ZN32AMDRadeonX5000_AMDVega10Hardware32setupAndInitializeHWCapabilitiesEv",
@@ -152,7 +163,9 @@ void iVega::X5000::processKext(KernelPatcher &patcher, const size_t id, const ma
             wrapObtainAccelChannelGroup, this->orgObtainAccelChannelGroup};
         PANIC_COND(!request.route(patcher, id, slide, size), "X5000", "Failed to route obtainAccelChannelGroup");
     }
+}
 
+void iVega::X5000::applyAcceleratorPatches(KernelPatcher &patcher, mach_vm_address_t slide, size_t size, UInt32 *orgChannelTypes, mach_vm_address_t orgStartHWEngines) {
     if (currentKernelVersion() >= MACOS_14_4) {
         const PenguinWizardry::MaskedLookupPatch patch {&kextRadeonX5000, kAddrLibCreateOriginal1404,
             kAddrLibCreateOriginalMask1404, kAddrLibCreatePatched1404, kAddrLibCreatePatchedMask1404, 1};

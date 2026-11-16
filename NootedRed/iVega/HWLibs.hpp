@@ -55,6 +55,9 @@ namespace iVega {
         void processKext(KernelPatcher &patcher, size_t id, mach_vm_address_t slide, size_t size);
 
         private:
+        void routePspHooks(KernelPatcher &patcher, size_t id, mach_vm_address_t slide, size_t size);
+        void routeFirmwareHooks(KernelPatcher &patcher, size_t id, mach_vm_address_t slide, size_t size);
+        void applyLegacyFirmwarePatches(KernelPatcher &patcher, mach_vm_address_t slide, size_t size);
         static void wrapPopulateFirmwareDirectory(void *self);
         static bool wrapGetIpFw(void *self, UInt32 ipVersion, const char *name, void *out);
         static CAILResult pspIsSosRunning();
