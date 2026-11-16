@@ -196,7 +196,7 @@ void NRed::processPatcher() {
         this->architecture = NRedHardware::Architecture::MendocinoRDNA2;
         this->pciRevision = WIOKit::readPCIConfigValue(mendocino, WIOKit::kIOPCIConfigRevisionID);
         MendocinoProbe::publish(mendocino, this->pciRevision);
-        SYSLOG("NRed", "R5 Mendocino 1002:1506: GC10.3.7/DCN3.1.6 diagnostics only; no acceleration");
+        SYSLOG("NRed", "R6 Mendocino 1002:1506: native X6000 and DCN/eDP preflight only; no GC/DCN init or Metal");
         DeviceInfo::deleter(devInfo);
         return;
     }

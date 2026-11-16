@@ -6,6 +6,8 @@
 #include <MendocinoEDID.hpp>
 #include <MendocinoAtomDisplay.hpp>
 #include <MendocinoBringup.hpp>
+#include <MendocinoX6000Compatibility.hpp>
+#include <MendocinoDisplayPreflight.hpp>
 #include <MendocinoProbe.hpp>
 #include <IOKit/pci/IOPCIDevice.h>
 #include <IOKit/IOLib.h>
@@ -20,6 +22,8 @@ MendocinoBringup::State state{};
 // These flags record only that the binaries loaded, not Radeon 610M binding.
 uint32_t loadedComponentBits = 0;
 
+void setString(IOPCIDevice*, const char*, const char*);
+
 
 void updateStageProperties() {
     if (observedGpu == nullptr) { return; }
@@ -31,6 +35,12 @@ void updateStageProperties() {
     observedGpu->setProperty("NRed,DCN316-Identified", static_cast<unsigned long long>(state.has(MendocinoBringup::DCN316Identified)), 32);
     observedGpu->setProperty("NRed,IPDiscovery-Validated", static_cast<unsigned long long>(state.has(MendocinoBringup::IPDiscoveryValidated)), 32);
     observedGpu->setProperty("NRed,BoardProfile-Confirmed", static_cast<unsigned long long>(state.hardwareProfileConfirmed()), 32);
+    const auto gate = MendocinoX6000::evaluate(state);
+    setString(observedGpu, "NRed,X6000-R6-Gate", MendocinoX6000::name(gate));
+    observedGpu->setProperty("NRed,X6000-R6-CandidateOnly",
+        static_cast<unsigned long long>(MendocinoX6000::candidateOnly(state)), 32);
+    // Observing loaded kexts, their version, or a matching PCI ID is not driver attach.
+    observedGpu->setProperty("NRed,X6000-R6-NativeBindingVerified", static_cast<unsigned long long>(0), 32);
 }
 
 void setString(IOPCIDevice* const gpu, const char* const key, const char* const value)
@@ -73,7 +83,7 @@ void MendocinoProbe::publish(IOPCIDevice* const gpu, const unsigned int pciRevis
     if (status == NRedHardware::ProbeStatus::MendocinoPciVerified) {
         state.observe(MendocinoBringup::PciDisplayClass);
     }
-    setString(gpu, "NRed,PortStatus", "R5_RDNA2_GC_DCN_IP_PREFLIGHT_NO_ACCELERATION");
+    setString(gpu, "NRed,PortStatus", "R6_NATIVE_X6000_DISPLAY_PREFLIGHT_NO_ACCELERATION");
     // Board firmware handoff: optional *input* from OpenCore/other trusted loader,
     // not a native ACPI table read. No ROM donor and no GPU programming.
     // Refuse to replace a pre-existing valid VBIOS. This is the correct
@@ -183,6 +193,11 @@ void MendocinoProbe::publish(IOPCIDevice* const gpu, const unsigned int pciRevis
         set32(gpu, "NRed,Panel-PixelClockKHz", edid.timing.pixelClockKHz);
         set32(gpu, "NRed,Panel-RefreshMilliHz", edid.timing.refreshMilliHz);
     }
+    const auto displayPreflight = MendocinoDisplayPreflight::evaluate(atomDisplay, edid);
+    setString(gpu, "NRed,eDP-Preflight", MendocinoDisplayPreflight::name(displayPreflight));
+    // The gate is a read-only configuration check. No eDP/AUX/MMIO operation.
+    set32(gpu, "NRed,eDP-TimingCandidate", displayPreflight == MendocinoDisplayPreflight::Status::TimingCandidate);
+    set32(gpu, "NRed,eDP-LinkTrained", 0); // No AUX/eDP link training performed.
     updateStageProperties();
     setString(gpu, "NRed,ProbeResult", status == NRedHardware::ProbeStatus::MendocinoPciVerified
                                         ? "MENDOCINO_PCI_CLASS_VERIFIED" : "UNEXPECTED_PCI_CLASS");
