@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A61000000000000000000011 /* MendocinoProbe.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A61000000000000000000002 /* MendocinoProbe.cpp */; };
 		1C748C2D1C21952C0024EED2 /* Plugin.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1C748C2C1C21952C0024EED2 /* Plugin.cpp */; };
 		400909902E9932F2006EC1EA /* HWMemory.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 4009098F2E9932F2006EC1EA /* HWMemory.hpp */; };
 		400909922E9938DB006EC1EA /* HWMemory.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 400909912E9938DB006EC1EA /* HWMemory.cpp */; };
@@ -105,6 +106,14 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		A61000000000000000000002 /* MendocinoProbe.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = MendocinoProbe.cpp; sourceTree = "<group>"; };
+		A61000000000000000000004 /* MendocinoProbe.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = MendocinoProbe.hpp; sourceTree = "<group>"; };
+		A61000000000000000000006 /* HardwareProfile.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = HardwareProfile.hpp; sourceTree = "<group>"; };
+		A61000000000000000000008 /* MendocinoBringup.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = MendocinoBringup.hpp; sourceTree = "<group>"; };
+		A6100000000000000000000A /* MendocinoEDID.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = MendocinoEDID.hpp; sourceTree = "<group>"; };
+		A6100000000000000000000C /* MendocinoIPDiscovery.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = MendocinoIPDiscovery.hpp; sourceTree = "<group>"; };
+		A6100000000000000000000E /* MendocinoPciConfig.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = MendocinoPciConfig.hpp; sourceTree = "<group>"; };
+		A61000000000000000000010 /* MendocinoVbios.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = MendocinoVbios.hpp; sourceTree = "<group>"; };
 		1C748C271C21952C0024EED2 /* NootedRed.kext */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = NootedRed.kext; sourceTree = BUILT_PRODUCTS_DIR; };
 		1C748C2C1C21952C0024EED2 /* Plugin.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = Plugin.cpp; sourceTree = "<group>"; };
 		1C748C2E1C21952C0024EED2 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -314,6 +323,14 @@
 				401075922CDA8742002D1CD7 /* Model.cpp */,
 				CEA03B5D20EE825A00BA842F /* NRed.hpp */,
 				CEA03B5C20EE825A00BA842F /* NRed.cpp */,
+				A61000000000000000000002 /* MendocinoProbe.cpp */,
+				A61000000000000000000004 /* MendocinoProbe.hpp */,
+				A61000000000000000000006 /* HardwareProfile.hpp */,
+				A61000000000000000000008 /* MendocinoBringup.hpp */,
+				A6100000000000000000000A /* MendocinoEDID.hpp */,
+				A6100000000000000000000C /* MendocinoIPDiscovery.hpp */,
+				A6100000000000000000000E /* MendocinoPciConfig.hpp */,
+				A61000000000000000000010 /* MendocinoVbios.hpp */,
 				1C748C2C1C21952C0024EED2 /* Plugin.cpp */,
 			);
 			path = NootedRed;
@@ -767,6 +784,7 @@
 				4059A1132E6DECA600F20858 /* DriverInjector.cpp in Sources */,
 				40FC5FD929BF995E00367F9D /* X5000.cpp in Sources */,
 				CEA03B5E20EE825A00BA842F /* NRed.cpp in Sources */,
+				A61000000000000000000011 /* MendocinoProbe.cpp in Sources */,
 				1C748C2D1C21952C0024EED2 /* Plugin.cpp in Sources */,
 				CE405ED91E4A080700AA0B3D /* plugin_start.cpp in Sources */,
 			);

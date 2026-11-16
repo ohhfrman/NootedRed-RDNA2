@@ -87,6 +87,8 @@ void Backlight::init() {
 }
 
 void Backlight::processKext(KernelPatcher &patcher, const size_t id, const mach_vm_address_t slide, const size_t size) {
+    if (NRed::singleton().isMendocino()) { return; } // DCN3.1.6 backlight unsupported.
+    if (!NRed::singleton().isVega()) { return; } // No patch before GPU identification.
     if (kextRadeonX6000Framebuffer.loadIndex == id) {
         if (currentKernelVersion() >= MACOS_11 && !NRed::singleton().getAttributes().isRenoir()) {
             PenguinWizardry::PatternSolveRequest solveRequest {"_dce_driver_set_backlight",
@@ -154,6 +156,8 @@ void Backlight::processKext(KernelPatcher &patcher, const size_t id, const mach_
 }
 
 bool Backlight::OnAppleBacklightDisplayLoad(void *const, void *const, IOService *const newService, IONotifier *const) {
+    if (NRed::singleton().isMendocino()) { return false; }
+    if (!NRed::singleton().isVega()) { return false; }
     auto *const params = OSDynamicCast(OSDictionary, newService->getProperty("IODisplayParameters"));
     if (params == nullptr) { return false; }
 

@@ -44,3 +44,8 @@ DerivedData/
 CompilationDatabase/
 compile_commands.json
 clang_analyze
+
+# Local generated files
+.xmake/
+__pycache__/
+*.pyc
