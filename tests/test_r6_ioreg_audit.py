@@ -29,6 +29,22 @@ class IoregTests(unittest.TestCase):
         self.assertEqual(r['metal'], 'NOT_VERIFIED')
         self.assertEqual(r['gc1037_initialized'], 'NOT_VERIFIED')
 
+    def test_own_provider_is_not_apple_x6000(self):
+        child = {'IOClass': 'NRedMendocinoProvider',
+                 'NRed,Stage3C-Status': 'OWN_IOKIT_PROVIDER_ATTACHED_ONLY'}
+        report = mod.audit([self.gpu(child)])
+        device = report['devices'][0]
+        self.assertTrue(device['stage3c_own_provider_child'])
+        self.assertTrue(device['stage3c_own_provider_only'])
+        self.assertEqual(device['x6000_child_services'], [])
+        self.assertEqual(device['status'], 'NO_NATIVE_X6000_CHILD_SERVICE_OBSERVED')
+        self.assertEqual(report['metal'], 'NOT_VERIFIED')
+
+    def test_unverified_provider_does_not_count_as_attached(self):
+        report = mod.audit([self.gpu({'IOClass': 'NRedMendocinoProvider'})])
+        self.assertFalse(report['devices'][0]['stage3c_own_provider_child'])
+        self.assertTrue(report['devices'][0]['stage3c_own_provider_only'])
+
     def test_non_pci_metadata(self):
         self.assertIsNone(mod.pci_number('0x1506'))
         self.assertFalse(mod.is_mendocino({'vendor-id': 0x1002, 'device-id': 0x1507}))

@@ -65,8 +65,15 @@ def audit(tree):
         for node in [root, *descendants(root)]:
             if is_mendocino(node):
                 observed = sorted(set(filter(None, (candidate_class(item) for item in descendants(node)))))
+                own_providers = [item for item in descendants(node)
+                                 if item.get("IOClass") == "NRedMendocinoProvider"]
+                own_provider_status = any(
+                    item.get("NRed,Stage3C-Status") == "OWN_IOKIT_PROVIDER_ATTACHED_ONLY"
+                    for item in own_providers)
                 devices.append({
                     "pci": "1002:1506",
+                    "stage3c_own_provider_child": own_provider_status,
+                    "stage3c_own_provider_only": bool(own_providers),
                     "x6000_child_services": observed,
                     "status": "NATIVE_SERVICE_CHILD_OBSERVED_ACCELERATION_UNVERIFIED" if observed
                               else "NO_NATIVE_X6000_CHILD_SERVICE_OBSERVED",
