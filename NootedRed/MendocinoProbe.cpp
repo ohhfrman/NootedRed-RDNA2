@@ -8,9 +8,12 @@
 #include <MendocinoBringup.hpp>
 #include <MendocinoX6000Compatibility.hpp>
 #include <MendocinoDisplayPreflight.hpp>
+#include <MendocinoNativeAttachment.hpp>
 #include <MendocinoProbe.hpp>
 #include <IOKit/pci/IOPCIDevice.h>
 #include <IOKit/IOLib.h>
+#include <IOKit/IORegistryEntry.h>
+#include <IOKit/IOService.h>
 #include <libkern/c++/OSString.h>
 #include <libkern/c++/OSData.h>
 
@@ -24,6 +27,40 @@ uint32_t loadedComponentBits = 0;
 
 void setString(IOPCIDevice*, const char*, const char*);
 
+// Read-only scan of IOService descendants, not matching-rule injection.
+// The iterator must be released, and registry mutation makes a scan
+// indeterminate rather than proof of successful attachment.
+MendocinoNativeAttachment::Evidence observeNativeChildren(IOPCIDevice *gpu) {
+    MendocinoNativeAttachment::Evidence evidence {};
+    if (gpu == nullptr) { return evidence; }
+    auto *iterator = IORegistryIterator::iterateOver(
+        gpu, gIOServicePlane, kIORegistryIterateRecursively);
+    if (iterator == nullptr) { return evidence; }
+
+    // Keep the traversal bounded even if the service graph is unusual.
+    bool exhausted = false;
+    for (unsigned int n = 0; n < 1024; ++n) {
+        auto *entry = iterator->getNextObject();
+        if (entry == nullptr) { exhausted = true; break; }
+        auto *service = OSDynamicCast(IOService, entry);
+        if (service == nullptr || service == gpu) { continue; }
+        const auto *meta = service->getMetaClass();
+        if (meta == nullptr) { continue; }
+        switch (MendocinoNativeAttachment::classify(meta->getClassName())) {
+            case MendocinoNativeAttachment::ServiceClass::X6000GpuWrangler:
+                evidence.wranglerChild = true;
+                break;
+            case MendocinoNativeAttachment::ServiceClass::X6000Navi10Controller:
+                evidence.navi10ControllerChild = true;
+                break;
+            case MendocinoNativeAttachment::ServiceClass::Other:
+                break;
+        }
+    }
+    evidence.traversalComplete = exhausted && iterator->isValid();
+    iterator->release();
+    return evidence;
+}
 
 void updateStageProperties() {
     if (observedGpu == nullptr) { return; }
@@ -39,8 +76,20 @@ void updateStageProperties() {
     setString(observedGpu, "NRed,X6000-R6-Gate", MendocinoX6000::name(gate));
     observedGpu->setProperty("NRed,X6000-R6-CandidateOnly",
         static_cast<unsigned long long>(MendocinoX6000::candidateOnly(state)), 32);
-    // Observing loaded kexts, their version, or a matching PCI ID is not driver attach.
-    observedGpu->setProperty("NRed,X6000-R6-NativeBindingVerified", static_cast<unsigned long long>(0), 32);
+    // Stage 3B: actual IOService metaclasses below the PCI provider, not
+    // merely loaded X6000 bundles or matching strings in a plist.
+    const auto attached = observeNativeChildren(observedGpu);
+    const auto attachmentStatus = MendocinoNativeAttachment::evaluate(attached);
+    setString(observedGpu, "NRed,X6000-R6-IOServiceEvidence",
+        MendocinoNativeAttachment::name(attachmentStatus));
+    observedGpu->setProperty("NRed,X6000-R6-WranglerChildObserved",
+        static_cast<unsigned long long>(attached.traversalComplete && attached.wranglerChild), 32);
+    observedGpu->setProperty("NRed,X6000-R6-Navi10ControllerChildObserved",
+        static_cast<unsigned long long>(attached.traversalComplete && attached.navi10ControllerChild), 32);
+    // Neither this evidence nor a Navi10 controller can validate Mendocino
+    // initialization. Keep the existing safety property false.
+    observedGpu->setProperty("NRed,X6000-R6-NativeBindingVerified",
+        static_cast<unsigned long long>(MendocinoNativeAttachment::hardwareBindingValidated(attached)), 32);
 }
 
 void setString(IOPCIDevice* const gpu, const char* const key, const char* const value)
